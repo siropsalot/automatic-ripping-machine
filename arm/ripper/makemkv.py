@@ -145,6 +145,7 @@ def prep_mkv(job):
     Raises:
         MakeMkvRuntimeException
     """
+    # TODO: refactor to test key validity on each run
     logging.info("Prepping MakeMkv for usage...")
 
     cmd = f"makemkvcon info {job.devpath}"
@@ -152,9 +153,9 @@ def prep_mkv(job):
         # check=True is needed to make the exception throw on a non-zero return
         subprocess.run(cmd, capture_output=True, shell=True, check=True)  # noqa: F841
     except subprocess.CalledProcessError as mkv_error:
-        if mkv_error.returncode == 253:
+        if mkv_error.returncode == 253 or mkv_error.returncode == 11:
             # MakeMKV is out of date
-            logging.info("MakeMKV: return code is 253, MakeMKV beta key has expired.")
+            logging.info("MakeMKV: return code is ${mkv_error.returncode}, MakeMKV beta key has expired.")
             update_key()
             try:
                 subprocess.run(cmd, capture_output=True, shell=True, check=True)  # noqa: F841
