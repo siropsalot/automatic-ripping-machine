@@ -104,7 +104,8 @@ function install_arm_requirements() {
         handbrake-cli \
         imagemagick \
         at \
-        libdvd-pkg lsdvd
+        libdvd-pkg \
+        lsdvd
     dpkg-reconfigure --frontend noninteractive libdvd-pkg
     build_makemkv
 }
@@ -165,7 +166,7 @@ function clone_arm() {
     if [ -d arm ]; then
         echo -e "${RED}Existing ARM installation found, backing up config files...${NC}"
         rm -rf /etc/arm
-        mkdir -p /etc/arm/
+        mkdir -p /etc/arm/config
         if [ -f ./arm/arm.yaml ]; then
             echo "arm.yaml found"
             mv /opt/arm/arm.yaml /etc/arm/backup.arm.yaml
@@ -177,7 +178,7 @@ function clone_arm() {
 
     ARM_LATEST=$(curl --silent 'https://github.com/automatic-ripping-machine/automatic-ripping-machine/releases' | grep 'automatic-ripping-machine/tree/*' | head -n 1 | sed -e 's/[^0-9\.]*//g')
     echo -e "Arm latest stable version is v$ARM_LATEST. Pulling v$ARM_LATEST"
-    git clone --recurse-submodules https://github.com/automatic-ripping-machine/automatic-ripping-machine --branch "v$ARM_LATEST" arm
+    git clone --recurse-submodules https://github.com/automatic-ripping-machine/automatic-ripping-machine -b "v$ARM_LATEST" arm
     cd arm
     git checkout v2_master
     git submodule update --init --recursive
@@ -193,6 +194,15 @@ function create_abcde_symlink() {
         rm /home/arm/.abcde.conf
     fi
     ln -sf /opt/arm/setup/.abcde.conf /home/arm/
+    ln -sf /opt/arm/setup/.abcde.conf /etc/arm/config/abcde.conf
+}
+
+function create_apprise_symlink() {
+    if ! [[ -z $(find /etc/arm/config/ -type l -ls | grep "apprise.yaml") ]]; then
+        rm /etc/arm/config/apprise.yaml
+    fi
+    ln -sf /opt/arm/setup/apprise.yaml /home/arm/apprise.yaml
+    ln -sf /opt/arm/setup/apprise.yaml /etc/arm/config/apprise.yaml
 }
 
 function create_arm_config_symlink() {
@@ -203,24 +213,25 @@ function create_arm_config_symlink() {
     fi
 
     if ! [[ -z $(find /etc/arm/ -type l -ls | grep "arm.yaml") ]]; then
-        rm /etc/arm/arm.yaml
+        rm /etc/arm/config/arm.yaml
     fi
-    ln -sf /opt/arm/arm.yaml /etc/arm/
+    ln -sf /opt/arm/arm.yaml /etc/arm/config/
 }
 
 function install_arm_live_env() {
     echo -e "${RED}Installing ARM:Automatic Ripping Machine${NC}"
+    mkdir -p /etc/arm/config/
     cd /opt
     clone_arm
     cd arm
     sudo -u arm pip3 install -r requirements.txt
     cp /opt/arm/setup/51-automedia.rules /etc/udev/rules.d/
+    create_apprise_symlink
     create_abcde_symlink
-    cp docs/arm.yaml.sample arm.yaml
+    cp setup/arm.yaml arm.yaml
     chown arm:arm arm.yaml
-    mkdir -p /etc/arm/
     create_arm_config_symlink
-    chmod +x /opt/arm/scripts/arm_wrapper.sh
+    chmod +x /opt/arm/scripts/thickclient/arm_wrapper.sh
     chmod +x /opt/arm/scripts/update_key.sh
 }
 
@@ -254,7 +265,7 @@ function setup_syslog_rule() {
         echo -e "${RED}ARM syslog rule found. Overwriting...${NC}"
         rm /etc/rsyslog.d/30-arm.conf
     fi
-    cp ./setup/30-arm.conf /etc/rsyslog.d/30-arm.conf
+    cp setup/30-arm.conf /etc/rsyslog.d/30-arm.conf
 }
 
 function install_armui_service() {
@@ -271,6 +282,15 @@ function install_armui_service() {
     systemctl start armui.service
     systemctl enable armui.service
     sysctl -p
+}
+
+function setup_folders(){
+   ##### create needed folders for arm
+   mkdir -p /home/arm/logs/
+   mkdir -p /home/arm/media/transcode/
+   mkdir -p /home/arm/media/completed/
+   mkdir -p /home/arm/media/raw/
+   chown -R arm:arm /home/arm 
 }
 
 function launch_setup() {
@@ -295,6 +315,7 @@ install_arm_live_env
 install_python_requirements
 setup_autoplay
 setup_syslog_rule
+setup_folders
 install_armui_service
 launch_setup
 
